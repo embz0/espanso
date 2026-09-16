@@ -1,0 +1,95 @@
+name: Windows Emoji Font Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - emoji-font
+    paths:
+      - ".github/workflows/emoji-font-build.yml"
+      - "espanso-modulo/src/sys/search/search.cpp"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Patch search popup font
+        shell: pwsh
+        run: |
+          $path = "espanso-modulo/src/sys/search/search.cpp"
+          $text = Get-Content -Raw -Path $path
+
+          $old = @'
+          ResultListBox::ResultListBox(wxWindow *parent, bool isDark, const wxWindowID id,
+                                       const wxPoint &pos, const wxSize &size)
+              : wxHtmlListBox(parent, id, pos, size, 0) {
+              this->isDark = isDark;
+              SetMargins(5, 5);
+              Refresh();
+          }
+          '@
+
+          $new = @'
+          ResultListBox::ResultListBox(wxWindow *parent, bool isDark, const wxWindowID id,
+                                       const wxPoint &pos, const wxSize &size)
+              : wxHtmlListBox(parent, id, pos, size, 0) {
+              this->isDark = isDark;
+          #ifdef __WXMSW__
+              // Prefer Windows' native emoji font in search/choice results.
+              wxFont resultFont = GetFont();
+              resultFont.SetFaceName("Segoe UI Emoji");
+              resultFont.SetPointSize(11);
+              SetFont(resultFont);
+          #endif
+              SetMargins(5, 5);
+              Refresh();
+          }
+          '@
+
+          if (-not $text.Contains($old)) {
+            throw "Expected ResultListBox constructor was not found; upstream source may have changed."
+          }
+
+          $text = $text.Replace($old, $new)
+          Set-Content -Path $path -Value $text -Encoding UTF8
+
+      - name: Build Espanso
+        run: cargo build --release
+
+      - name: Build Windows resources
+        shell: pwsh
+        run: |
+          $env:EXEC_PATH = "target\release\espanso.exe"
+          scripts\build_windows_resources.ps1
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          Install-Module -Name PSTOML -Force -Scope CurrentUser
+          scripts\build_windows_installer.ps1
+
+      - name: Build portable archive
+        shell: pwsh
+        run: scripts\build_windows_portable.ps1
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Espanso-Windows-Emoji-Font
+          path: |
+            target/windows/Espanso-Win-Installer-x86_64.exe
+            target/windows/Espanso-Win-Portable-x86_64.zip
+          if-no-files-found: error
