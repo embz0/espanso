@@ -142,6 +142,7 @@ fn build_native() {
         .file("src/sys/troubleshooting/troubleshooting.cpp")
         .file("src/sys/troubleshooting/troubleshooting_gui.cpp")
         .flag("/EHsc")
+        .flag("/utf-8")
         .include(wx_include_dir)
         .include(wx_include_msvc_dir)
         .compile("espansomodulosys");

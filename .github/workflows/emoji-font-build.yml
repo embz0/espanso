@@ -7,7 +7,8 @@ on:
       - emoji-font
     paths:
       - ".github/workflows/emoji-font-build.yml"
-      - "espanso-modulo/src/sys/search/search.cpp"
+      - "espanso-modulo/src/sys/search/**"
+      - "espanso-modulo/build.rs"
 
 permissions:
   contents: read
@@ -22,30 +23,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Patch search popup font
-        shell: pwsh
-        run: |
-          $path = "espanso-modulo/src/sys/search/search.cpp"
-          $text = Get-Content -Raw -Path $path
-          $needle = "    this->isDark = isDark;"
-          if (-not $text.Contains($needle)) {
-            throw "Could not find ResultListBox font insertion point."
-          }
-
-          $insert = @(
-            '    this->isDark = isDark;'
-            '#ifdef __WXMSW__'
-            '    // Prefer Windows native emoji font in search and choice results.'
-            '    wxFont resultFont = GetFont();'
-            '    resultFont.SetFaceName("Segoe UI Emoji");'
-            '    resultFont.SetPointSize(11);'
-            '    SetFont(resultFont);'
-            '#endif'
-          ) -join "`n"
-
-          $text = $text.Replace($needle, $insert)
-          Set-Content -Path $path -Value $text -Encoding UTF8
 
       - name: Build Espanso
         run: cargo build --release

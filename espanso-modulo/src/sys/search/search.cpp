@@ -1,3 +1,6 @@
+#ifdef _WIN32
+#include "search_windows.h"
+#else
 /*
  * This file is part of modulo.
  *
@@ -583,3 +586,5 @@ extern "C" void update_items(void *app, SearchItem *items, int itemSize) {
     SearchFrame *frame = (SearchFrame *)app;
     frame->SetItems(items, itemSize);
 }
+
+#endif
