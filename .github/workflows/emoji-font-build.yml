@@ -33,16 +33,16 @@ jobs:
             throw "Could not find ResultListBox font insertion point."
           }
 
-          $insert = @'
-    this->isDark = isDark;
-#ifdef __WXMSW__
-    // Prefer Windows' native emoji font in search/choice results.
-    wxFont resultFont = GetFont();
-    resultFont.SetFaceName("Segoe UI Emoji");
-    resultFont.SetPointSize(11);
-    SetFont(resultFont);
-#endif
-'@
+          $insert = @(
+            '    this->isDark = isDark;'
+            '#ifdef __WXMSW__'
+            '    // Prefer Windows native emoji font in search and choice results.'
+            '    wxFont resultFont = GetFont();'
+            '    resultFont.SetFaceName("Segoe UI Emoji");'
+            '    resultFont.SetPointSize(11);'
+            '    SetFont(resultFont);'
+            '#endif'
+          ) -join "`n"
 
           $text = $text.Replace($needle, $insert)
           Set-Content -Path $path -Value $text -Encoding UTF8
