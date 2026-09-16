@@ -25,10 +25,20 @@
 #include "../common/common.h"
 #include "../interop/interop.h"
 
+#include "wx/fileconf.h"
+#include "wx/filename.h"
 #include "wx/htmllbox.h"
+#include "wx/stdpaths.h"
 
+#ifdef __WXMSW__
+#include <windows.h>
+#endif
+
+#include <algorithm>
 #include <memory>
+#include <numeric>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #ifdef __WXOSX__
@@ -54,8 +64,10 @@ const long DEFAULT_STYLE = wxSTAY_ON_TOP | wxRESIZE_BORDER;
 
 const int HELP_TEXT_FONT_SIZE = 10;
 
-const wxColour SELECTION_LIGHT_BG = wxColour(164, 210, 253);
-const wxColour SELECTION_DARK_BG = wxColour(49, 88, 126);
+const wxColour SELECTION_LIGHT_BG = wxColour(184, 215, 255);
+const wxColour SELECTION_DARK_BG = wxColour(64, 107, 168);
+const wxColour GLASS_LIGHT_BG = wxColour(239, 246, 255);
+const wxColour GLASS_DARK_BG = wxColour(30, 36, 48);
 
 // https://docs.wxwidgets.org/stable/classwx_frame.html
 const int MIN_WIDTH = 500;
@@ -72,6 +84,66 @@ void *resultData = nullptr;
 wxArrayString wxItems;
 wxArrayString wxTriggers;
 wxArrayString wxIds;
+
+wxString UsageFilePath() {
+    wxString dir = wxStandardPaths::Get().GetUserLocalDataDir();
+    wxFileName::Mkdir(dir, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
+    return dir + wxFILE_SEP_PATH + "emoji-search-usage.ini";
+}
+
+wxString UsageKey(const wxString &id) {
+    wxString key = id;
+    key.Replace("/", "_");
+    key.Replace("\\", "_");
+    key.Replace(":", "_");
+    return "usage/" + key;
+}
+
+long UsageCount(const wxString &id) {
+    wxFileConfig config("espanso-emoji-search", wxEmptyString, UsageFilePath(),
+                        wxEmptyString, wxCONFIG_USE_LOCAL_FILE);
+    long count = 0;
+    config.Read(UsageKey(id), &count, 0L);
+    return count;
+}
+
+void RecordUsage(const wxString &id) {
+    wxFileConfig config("espanso-emoji-search", wxEmptyString, UsageFilePath(),
+                        wxEmptyString, wxCONFIG_USE_LOCAL_FILE);
+    const wxString key = UsageKey(id);
+    long count = 0;
+    config.Read(key, &count, 0L);
+    config.Write(key, count + 1);
+    config.Flush();
+}
+
+void EnableLiquidGlass(wxWindow *window) {
+#ifdef __WXMSW__
+    HWND hwnd = reinterpret_cast<HWND>(window->GetHandle());
+    if (hwnd == nullptr) {
+        return;
+    }
+
+    HMODULE dwmapi = LoadLibraryW(L"dwmapi.dll");
+    if (dwmapi == nullptr) {
+        return;
+    }
+
+    using DwmSetWindowAttributeFn = HRESULT(WINAPI *)(HWND, DWORD, LPCVOID, DWORD);
+    auto set_attribute = reinterpret_cast<DwmSetWindowAttributeFn>(
+        GetProcAddress(dwmapi, "DwmSetWindowAttribute"));
+    if (set_attribute != nullptr) {
+        // Windows 11: rounded corners and the translucent system backdrop.
+        const DWORD rounded_corners = 2;
+        const DWORD transient_backdrop = 3;
+        set_attribute(hwnd, 33, &rounded_corners,
+                      static_cast<DWORD>(sizeof(rounded_corners)));
+        set_attribute(hwnd, 38, &transient_backdrop,
+                      static_cast<DWORD>(sizeof(transient_backdrop)));
+    }
+    FreeLibrary(dwmapi);
+#endif
+}
 
 // App Code
 
@@ -123,7 +195,9 @@ void ResultListBox::OnDrawBackground(wxDC &dc, const wxRect &rect,
         dc.SetBrush(*wxTRANSPARENT_BRUSH);
     }
     dc.SetPen(*wxTRANSPARENT_PEN);
-    dc.DrawRectangle(0, 0, rect.GetRight(), rect.GetBottom());
+    wxRect pill = rect;
+    pill.Deflate(4, 2);
+    dc.DrawRoundedRectangle(pill, 10);
 }
 
 // Helper function to escape HTML special characters
@@ -147,7 +221,7 @@ wxString ResultListBox::OnGetItem(size_t n) const {
     wxString escapedTrigger = EscapeHtml(wxTriggers[n]);
 
     wxString result = wxString::Format(
-        wxT("<font color='%s'><table width='100%%'><tr><td>%s</td><td "
+        wxT("<font face='Segoe UI Emoji' color='%s'><table width='100%%'><tr><td>%s</td><td "
             "align='right'><b>%s</b> <font color='#636e72'> "
             "%s</font></td></tr></table></font>"),
         textColor, escapedLabel, escapedTrigger, shortcut);
@@ -191,6 +265,7 @@ bool SearchApp::OnInit() {
         new SearchFrame(wxString::FromUTF8(searchMetadata->windowTitle),
                         wxPoint(50, 50), wxSize(450, 340));
     frame->Show(true);
+    EnableLiquidGlass(frame);
     SetupWindowStyle(frame);
     Activate(frame);
     return true;
@@ -212,6 +287,7 @@ SearchFrame::SearchFrame(const wxString &title, const wxPoint &pos,
 #endif
 
     panel = new wxPanel(this, wxID_ANY);
+    panel->SetBackgroundColour(isDark ? GLASS_DARK_BG : GLASS_LIGHT_BG);
     wxBoxSizer *vbox = new wxBoxSizer(wxVERTICAL);
     panel->SetSizer(vbox);
 
@@ -241,6 +317,11 @@ SearchFrame::SearchFrame(const wxString &title, const wxPoint &pos,
         new wxTextCtrl(panel, textId, "", wxDefaultPosition, wxDefaultSize);
     wxFont font = searchBar->GetFont();
     font.SetPointSize(SEARCH_BAR_FONT_SIZE);
+#ifdef __WXMSW__
+    font.SetFaceName("Segoe UI Variable Text");
+    searchBar->SetBackgroundColour(isDark ? wxColour(42, 51, 68)
+                                          : wxColour(255, 255, 255));
+#endif
     searchBar->SetFont(font);
     topBox->Add(searchBar, 1, wxEXPAND | wxALL, 10);
 
@@ -259,7 +340,8 @@ SearchFrame::SearchFrame(const wxString &title, const wxPoint &pos,
     int resultId = NewControlId();
     resultBox = new ResultListBox(panel, isDark, resultId, wxDefaultPosition,
                                   wxSize(MIN_WIDTH, MIN_HEIGHT));
-    vbox->Add(resultBox, 5, wxEXPAND | wxALL, 0);
+    resultBox->SetBackgroundColour(isDark ? GLASS_DARK_BG : GLASS_LIGHT_BG);
+    vbox->Add(resultBox, 5, wxEXPAND | wxALL, 6);
 
     Bind(wxEVT_CHAR_HOOK, &SearchFrame::OnCharEvent, this, wxID_ANY);
     searchBar->Bind(wxEVT_CHAR, &SearchFrame::OnCharEvent, this, wxID_ANY);
@@ -409,15 +491,25 @@ void SearchFrame::SetItems(SearchItem *items, int itemSize) {
     wxIds.Clear();
     wxTriggers.Clear();
 
+    std::vector<std::pair<int, long>> ranked_items;
+    ranked_items.reserve(itemSize);
     for (int i = 0; i < itemSize; i++) {
-        wxString item = wxString::FromUTF8(items[i].label);
-        wxItems.Add(item);
+        const wxString id = wxString::FromUTF8(items[i].id);
+        ranked_items.emplace_back(i, UsageCount(id));
+    }
 
-        wxString id = wxString::FromUTF8(items[i].id);
-        wxIds.Add(id);
+    // The search algorithm has already filtered and relevance-ranked matches.
+    // Keep that order for equal counts while bringing familiar matching entries up.
+    std::stable_sort(ranked_items.begin(), ranked_items.end(),
+                     [](const auto &left, const auto &right) {
+                         return left.second > right.second;
+                     });
 
-        wxString trigger = wxString::FromUTF8(items[i].trigger);
-        wxTriggers.Add(trigger);
+    for (const auto &ranked_item : ranked_items) {
+        const int item_index = ranked_item.first;
+        wxItems.Add(wxString::FromUTF8(items[item_index].label));
+        wxIds.Add(wxString::FromUTF8(items[item_index].id));
+        wxTriggers.Add(wxString::FromUTF8(items[item_index].trigger));
     }
 
     resultBox->SetItemCount(itemSize);
@@ -458,6 +550,7 @@ void SearchFrame::Submit() {
         resultBox->GetSelection() != wxNOT_FOUND) {
         long index = resultBox->GetSelection();
         wxString id = wxIds[index];
+        RecordUsage(id);
         if (resultCallback) {
             resultCallback(id.ToUTF8(), resultData);
         }
