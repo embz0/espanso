@@ -7,6 +7,7 @@
 #include <wx/stdpaths.h>
 #include <wx/dcclient.h>
 #include <d3d11.h>
+#include <dxgi1_2.h>
 #include <d2d1_1.h>
 #include <dwrite.h>
 #include <dcomp.h>
@@ -259,14 +260,22 @@ public:
         Bind(wxEVT_MOUSEWHEEL,[this](wxMouseEvent &e) {
             first=(std::max)(0,(std::min)(first-(e.GetWheelRotation()>0?3:-3),int(items.size())-Visible())); Draw();
         });
-        Bind(wxEVT_SIZE,[this](wxSizeEvent &e) {
+        Bind(wxEVT_SIZE,[this](wxSizeEvent &) {
             if(input) LayoutInput();
             if(ready) { ctx->SetTarget(nullptr); HRESULT hr=swap->ResizeBuffers(0,(std::max)(1,GetClientSize().x),(std::max)(1,GetClientSize().y),DXGI_FORMAT_UNKNOWN,0); ready=SUCCEEDED(hr)&&BindBuffer(); KeepVisible(); Draw(); }
-            e.Skip();
+            // Consume this event: wxFrame's default layout stretches its only
+            // child over the whole client area, hiding the composition surface.
         });
     }
     bool Start() {
         const HWND hwnd=reinterpret_cast<HWND>(GetHandle());
+        // Remove the opaque GDI backing store beneath the composition tree.
+        SetWindowLongPtrW(hwnd,GWL_EXSTYLE,GetWindowLongPtrW(hwnd,GWL_EXSTYLE)|WS_EX_NOREDIRECTIONBITMAP);
+        // The native edit field keeps IME, selection and accessibility support.
+        // Give this child its own backing store above the transparent parent.
+        const HWND edit=reinterpret_cast<HWND>(input->GetHandle());
+        SetWindowLongPtrW(edit,GWL_EXSTYLE,GetWindowLongPtrW(edit,GWL_EXSTYLE)|WS_EX_LAYERED);
+        SetLayeredWindowAttributes(edit,0,255,LWA_ALPHA);
         HIGHCONTRASTW hc={sizeof(hc)};
         SystemParametersInfoW(SPI_GETHIGHCONTRAST,sizeof(hc),&hc,0);
         highContrast=(hc.dwFlags&HCF_HIGHCONTRASTON)!=0;
