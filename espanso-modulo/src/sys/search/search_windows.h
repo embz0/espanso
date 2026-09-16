@@ -1,11 +1,11 @@
 // Windows search surface: DirectWrite colour glyphs on a premultiplied
 // DirectComposition swap chain. Kept separate from the cross-platform popup.
-#include "../common/common.h"
-#include "../interop/interop.h"
-#include <wx/fileconf.h>
-#include <wx/filename.h>
-#include <wx/stdpaths.h>
-#include <wx/dcclient.h>
+#ifndef UNICODE
+#define UNICODE
+#endif
+#ifndef _UNICODE
+#define _UNICODE
+#endif
 #include <d3d11.h>
 #include <dxgi1_2.h>
 #include <d2d1_1.h>
@@ -13,6 +13,12 @@
 #include <dcomp.h>
 #include <dwmapi.h>
 #include <wrl/client.h>
+#include "../common/common.h"
+#include "../interop/interop.h"
+#include <wx/fileconf.h>
+#include <wx/filename.h>
+#include <wx/stdpaths.h>
+#include <wx/dcclient.h>
 #include <algorithm>
 #include <memory>
 #include <vector>
@@ -60,7 +66,7 @@ class Frame : public wxFrame {
     ComPtr<IDCompositionTarget> target;
     ComPtr<IDCompositionVisual> visual;
     ComPtr<IDWriteFactory> write;
-    ComPtr<IDWriteTextFormat> body, small, title;
+    ComPtr<IDWriteTextFormat> body, captionFormat, title;
     ComPtr<ID2D1SolidColorBrush> brush;
 
     float Width() const { return float(GetClientSize().x) / GetDPIScaleFactor(); }
@@ -113,11 +119,11 @@ class Frame : public wxFrame {
         if (FAILED(write->CreateTextFormat(L"Segoe UI Emoji", nullptr, DWRITE_FONT_WEIGHT_NORMAL,
             DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, 16, L"", &body)) ||
             FAILED(write->CreateTextFormat(L"Segoe UI", nullptr, DWRITE_FONT_WEIGHT_NORMAL,
-            DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, 12, L"", &small)) ||
+            DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, 12, L"", &captionFormat)) ||
             FAILED(write->CreateTextFormat(L"Segoe UI", nullptr, DWRITE_FONT_WEIGHT_SEMI_BOLD,
             DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, 13, L"", &title))) return false;
         body->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
-        small->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
+        captionFormat->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
         if (FAILED(ctx->CreateSolidColorBrush(D2D1::ColorF(1, 1, 1), &brush))) return false;
         return BindBuffer();
     }
@@ -157,13 +163,13 @@ class Frame : public wxFrame {
         Color(1,1,1,.18f);
         ctx->DrawRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(.5f,.5f,w-.5f,h-.5f),18,18),brush.Get(),1);
         Color(.77f,.81f,.92f); Text("ESPANSO",title.Get(),22,16,160,20);
-        Color(.58f,.64f,.76f); Text("SEARCH",small.Get(),w-78,18,60,18);
+        Color(.58f,.64f,.76f); Text("SEARCH",captionFormat.Get(),w-78,18,60,18);
         Color(.105f,.12f,.16f); Round(16,44,w-32,54,12);
         Color(.62f,.69f,.84f);
         ctx->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(36,68),6,6),brush.Get(),1.7f);
         ctx->DrawLine(D2D1::Point2F(40,73),D2D1::Point2F(46,79),brush.Get(),1.7f);
         Color(.62f,.68f,.79f);
-        Text(input->IsEmpty() ? "YOUR MOST USED" : "MATCHING ENTRIES",small.Get(),22,110,w-44,18);
+        Text(input->IsEmpty() ? "YOUR MOST USED" : "MATCHING ENTRIES",captionFormat.Get(),22,110,w-44,18);
         const int limit = (std::min)(int(items.size()),first+Visible());
         for (int i = first; i < limit; ++i) {
             const float y = 136 + (i-first)*58.f;
@@ -176,12 +182,12 @@ class Frame : public wxFrame {
             Color(.64f,.70f,.82f);
             wxString subtitle = items[i].trigger;
             if (items[i].uses > 0) subtitle += (subtitle.empty() ? "" : "   ·   ") + wxString::Format("Used %ld",items[i].uses);
-            Text(subtitle,small.Get(),26,y+28,w-115,17);
-            if (i < 9) Text(wxString::Format("Alt+%d",i+1),small.Get(),w-67,y+13,50,20);
+            Text(subtitle,captionFormat.Get(),26,y+28,w-115,17);
+            if (i < 9) Text(wxString::Format("Alt+%d",i+1),captionFormat.Get(),w-67,y+13,50,20);
         }
         if (items.empty()) {
             Color(.80f,.84f,.92f); Text("No matching entries",body.Get(),26,155,w-52,26);
-            Color(.61f,.67f,.78f); Text("Try a different word or trigger.",small.Get(),26,187,w-52,20);
+            Color(.61f,.67f,.78f); Text("Try a different word or trigger.",captionFormat.Get(),26,187,w-52,20);
         }
         if (int(items.size()) > Visible()) {
             const float track = (std::max)(20.f,h-174);
@@ -189,7 +195,7 @@ class Frame : public wxFrame {
             const float top = 136+(track-thumb)*first/(std::max)(1,int(items.size())-Visible());
             Color(1,1,1,.25f); Round(w-7,top,3,thumb,1.5f);
         }
-        Color(.60f,.66f,.77f); Text("↑ ↓  Navigate     Enter  Insert     Esc  Close",small.Get(),22,h-25,w-44,18);
+        Color(.60f,.66f,.77f); Text("↑ ↓  Navigate     Enter  Insert     Esc  Close",captionFormat.Get(),22,h-25,w-44,18);
         HRESULT hr = ctx->EndDraw();
         if (SUCCEEDED(hr)) hr = swap->Present(1,0);
         if (FAILED(hr)) { ready = false; Close(); }

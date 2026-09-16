@@ -15,6 +15,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  WX_WIDGETS_BUILD_OUT_DIR: ${{ github.workspace }}/target/wx-build
 
 jobs:
   windows:
@@ -23,6 +24,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Cache wxWidgets
+        uses: actions/cache@v4
+        with:
+          path: target/wx-build
+          key: windows-wx-v1-${{ hashFiles('espanso-modulo/vendor/*.zip') }}
 
       - name: Build Espanso
         run: cargo build --release
