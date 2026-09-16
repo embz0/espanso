@@ -25,6 +25,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Check Windows search renderer
+        shell: pwsh
+        run: |
+          $checkRoot = Join-Path $env:RUNNER_TEMP "espanso-search-check"
+          Expand-Archive "espanso-modulo/vendor/wxWidgets-3.1.5-patched-version-3.zip" -DestinationPath $checkRoot
+          $configRoot = Join-Path $checkRoot "syntax-config"
+          New-Item -ItemType Directory -Force "$configRoot/wx" | Out-Null
+          Copy-Item "$checkRoot/include/wx/msw/setup.h" "$configRoot/wx/setup.h"
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $vcvars = Join-Path $vs "VC/Auxiliary/Build/vcvars64.bat"
+          $command = '"' + $vcvars + '" && cl /nologo /Zs /EHsc /utf-8 /I"' + $configRoot + '" /I"' + $checkRoot + '/include" espanso-modulo/src/sys/search/search.cpp'
+          & cmd.exe /c $command
+          if ($LASTEXITCODE -ne 0) { throw "Windows search syntax check failed." }
+
       - name: Cache wxWidgets
         uses: actions/cache@v4
         with:
