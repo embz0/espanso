@@ -149,7 +149,7 @@ class Frame : public wxFrame {
     void Text(const wxString &value, IDWriteTextFormat *font, float x, float y, float w, float h) {
         // DirectWrite performs Unicode shaping/font fallback, including ZWJ and
         // skin-tone sequences. Explicitly opt into the font's colour layers.
-        ctx->DrawText(value.wc_str(), UINT32(value.length()), font,
+        ctx->DrawTextW(value.wc_str(), UINT32(value.length()), font,
             D2D1::RectF(x,y,x+w,y+h), brush.Get(),
             D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT | D2D1_DRAW_TEXT_OPTIONS_CLIP);
     }
